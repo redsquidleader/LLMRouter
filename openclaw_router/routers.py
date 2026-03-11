@@ -28,6 +28,16 @@ except ImportError:
 # Built-in Strategies
 # ============================================================
 
+LOCAL_PROVIDER_HINTS = {
+    "sglang",
+    "vllm",
+    "llama.cpp",
+    "llama_cpp",
+    "lmstudio",
+    "lm_studio",
+    "huggingface_cli",
+}
+
 def _safe_log(message: Any) -> None:
     """
     Print logs safely across terminals with different default encodings.
@@ -38,6 +48,36 @@ def _safe_log(message: Any) -> None:
         print(text)
     except UnicodeEncodeError:
         print(text.encode("ascii", errors="replace").decode("ascii"))
+
+
+def _is_local_base_url(base_url: str) -> bool:
+    if not base_url:
+        return False
+    lower = base_url.lower()
+    return (
+        "localhost" in lower
+        or "127.0.0.1" in lower
+        or lower.startswith("http://0.0.0.0")
+    )
+
+
+def _resolve_auth_mode(provider: str, base_url: str, auth_mode: str = "auto", local: Optional[bool] = None) -> str:
+    mode = (auth_mode or "auto").strip().lower()
+    if mode in ("none", "bearer"):
+        return mode
+
+    provider_norm = (provider or "").strip().lower()
+    is_local = bool(local) if local is not None else _is_local_base_url(base_url)
+    if provider_norm in LOCAL_PROVIDER_HINTS or is_local:
+        return "none"
+    return "bearer"
+
+
+def _build_chat_url(base_url: str, chat_path: str) -> str:
+    path = (chat_path or "/chat/completions").strip()
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{(base_url or '').rstrip('/')}{path}"
 
 
 def select_by_rules(query: str, models: List[str], rules: List[Dict]) -> str:
@@ -94,9 +134,11 @@ async def select_by_llm(
     provider = router.provider or "openai"
     base_url = router.base_url or "https://api.openai.com/v1"
     model_id = router.model or "gpt-4o-mini"
+    auth_mode = _resolve_auth_mode(provider, base_url, router.auth_mode, router.local)
+    chat_url = _build_chat_url(base_url, router.chat_path)
 
     api_key = config.get_api_key(provider)
-    if not api_key:
+    if auth_mode == "bearer" and not api_key:
         _safe_log(f"[Router] Warning: No API key for {provider}, using random")
         return random.choice(models)
 
@@ -155,10 +197,9 @@ User query: {query}"""
 
     try:
         async with httpx.AsyncClient() as client:
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
+            headers = {"Content-Type": "application/json"}
+            if auth_mode == "bearer" and api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
 
             body = {
                 "model": model_id,
@@ -168,7 +209,7 @@ User query: {query}"""
             }
 
             response = await client.post(
-                f"{base_url}/chat/completions",
+                chat_url,
                 headers=headers,
                 json=body,
                 timeout=15.0,

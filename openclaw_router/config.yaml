@@ -16,7 +16,9 @@ router:
   model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"  # small model for routing decisions
 
 # IMPORTANT:
-# For non-nvidia provider in current openclaw config logic, use a SINGLE string key (not list)
+# - NVIDIA supports key rotation via list.
+# - Other providers accept string key; list is also accepted but only the first valid key is used.
+# - Local OpenAI-compatible backends can run with empty key when auth_mode resolves to none.
 api_keys:
   # together: ${TOGETHER_API_KEY}
   # or directly:

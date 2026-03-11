@@ -35,6 +35,10 @@ class LLMConfig:
     provider: str
     model_id: str
     base_url: str
+    provider_type: str = "openai_compatible"
+    auth_mode: str = "auto"  # auto, bearer, none
+    chat_path: str = "/chat/completions"
+    local: Optional[bool] = None
     api_key: Optional[str] = None
     api_key_env: Optional[str] = None
     description: str = ""
@@ -53,6 +57,10 @@ class RouterConfig:
     provider: Optional[str] = None
     model: Optional[str] = None
     base_url: Optional[str] = None
+    provider_type: str = "openai_compatible"
+    auth_mode: str = "auto"  # auto, bearer, none
+    chat_path: str = "/chat/completions"
+    local: Optional[bool] = None
 
     # For rules strategy
     rules: List[Dict] = field(default_factory=list)
@@ -199,6 +207,10 @@ class OpenClawConfig:
             provider=router_data.get("provider"),
             model=router_data.get("model"),
             base_url=router_data.get("base_url"),
+            provider_type=router_data.get("provider_type", "openai_compatible"),
+            auth_mode=router_data.get("auth_mode", "auto"),
+            chat_path=router_data.get("chat_path", "/chat/completions"),
+            local=router_data.get("local"),
             rules=router_data.get("rules", []),
             weights=router_data.get("weights", {}),
             llmrouter_name=router_data.get("llmrouter", {}).get("name") or router_data.get("name"),
@@ -245,6 +257,10 @@ class OpenClawConfig:
                 provider=llm_config.get("provider", "openai"),
                 model_id=llm_config.get("model", name),
                 base_url=llm_config.get("base_url", "https://api.openai.com/v1"),
+                provider_type=llm_config.get("provider_type", "openai_compatible"),
+                auth_mode=llm_config.get("auth_mode", "auto"),
+                chat_path=llm_config.get("chat_path", "/chat/completions"),
+                local=llm_config.get("local"),
                 api_key=llm_config.get("api_key"),
                 api_key_env=llm_config.get("api_key_env"),
                 description=llm_config.get("description", ""),
@@ -289,7 +305,24 @@ class OpenClawConfig:
                     return next(self._nvidia_key_cycle)
             return os.getenv("NVIDIA_API_KEY")
 
-        key = self.api_keys.get(provider) or os.getenv(f"{provider.upper()}_API_KEY")
+        configured = self.api_keys.get(provider)
+        if isinstance(configured, list):
+            normalized = []
+            for item in configured:
+                text = str(item).strip()
+                if text and not text.startswith("$"):
+                    normalized.append(text)
+            if normalized:
+                # Keep behavior simple for non-NVIDIA providers:
+                # use the first configured key.
+                return normalized[0]
+            # Allow explicit empty key (local OpenAI-compatible backends).
+            if any(str(item).strip() == "" for item in configured):
+                return ""
+
+        key = configured if isinstance(configured, str) else None
+        if not key:
+            key = os.getenv(f"{provider.upper()}_API_KEY")
         if key and not key.startswith("$"):
             return key
         return None

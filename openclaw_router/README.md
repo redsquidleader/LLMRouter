@@ -343,11 +343,43 @@ Key fields:
 - `serve.host` / `serve.port`: where OpenClaw Router listens.
 - `router.strategy`:
   - `random` / `round_robin` / `rules`: deterministic/simple routing.
-  - `llm`: uses a "router LLM" to pick the backend model (requires `router.provider/base_url/model` + API key).
+  - `llm`: uses a "router LLM" to pick the backend model.
+    - If `auth_mode` resolves to `bearer`, an API key is required.
+    - If `auth_mode` resolves to `none` (for local OpenAI-compatible backends), key is optional.
   - `llmrouter`: uses the original LLMRouter ML-based routers.
 - `api_keys`: keys used by OpenClaw Router when calling upstream providers.
   - Supports environment variables like `${TOGETHER_API_KEY}`.
 - `llms`: your backend model pool (the Router chooses one of these for each request).
+  - You can mix frameworks in one pool (for example `sglang`, `vllm`, `llama_cpp`, `lmstudio`, `huggingface_cli`, cloud providers).
+
+OpenAI-compatible adapter fields (supported in both `router` and each `llms.<name>`):
+- `provider_type`: currently `openai_compatible` (reserved for future extension).
+- `auth_mode`: `auto | bearer | none`.
+- `chat_path`: defaults to `/chat/completions`.
+- `local`: optional boolean override for local detection in `auto` mode.
+
+Example: local multi-framework pool
+
+```yaml
+llms:
+  sglang_qwen:
+    provider: sglang
+    model: Qwen/Qwen2.5-7B-Instruct
+    base_url: http://127.0.0.1:30000/v1
+    auth_mode: none
+
+  vllm_llama:
+    provider: vllm
+    model: meta-llama/Llama-3.1-8B-Instruct
+    base_url: http://127.0.0.1:8001/v1
+    auth_mode: none
+
+  lmstudio_local:
+    provider: lmstudio
+    model: local-model
+    base_url: http://127.0.0.1:1234/v1
+    auth_mode: none
+```
 
 Optional routing memory (retrieval-augmented routing):
 
@@ -455,7 +487,12 @@ OpenClaw Router supports two routing families:
 - `round_robin`: cycle through backend models
 - `rules`: keyword rules (map keywords to specific backend models)
 - `llm`: use a small "router LLM" to choose the backend model
-  - Uses `router.provider`, `router.base_url`, `router.model`, and your `api_keys` to call the router LLM.
+  - Uses `router.provider`, `router.base_url`, `router.model`, and (if needed) your `api_keys` to call the router LLM.
+
+Routing granularity note:
+- Routing is request-level, not agent-identity-level by default.
+- If OpenClaw sends `model: "auto"`, the router decides per request content.
+- If you need strict per-agent binding, configure explicit model names in OpenClaw per agent, or add deterministic `rules`.
 
 2) Original LLMRouter ML-based routers (learned routers)
 - Set `router.strategy: llmrouter` and choose a router name (for example `knnrouter`, `mlprouter`, `svmrouter`, etc.).

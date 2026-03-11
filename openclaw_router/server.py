@@ -199,6 +199,47 @@ def clean_streaming_chunk(chunk: Dict) -> Optional[Dict]:
     return cleaned
 
 
+LOCAL_PROVIDER_HINTS = {
+    "sglang",
+    "vllm",
+    "llama.cpp",
+    "llama_cpp",
+    "lmstudio",
+    "lm_studio",
+    "huggingface_cli",
+}
+
+
+def _is_local_base_url(base_url: str) -> bool:
+    if not base_url:
+        return False
+    lower = base_url.lower()
+    return (
+        "localhost" in lower
+        or "127.0.0.1" in lower
+        or lower.startswith("http://0.0.0.0")
+    )
+
+
+def _resolve_auth_mode(provider: str, base_url: str, auth_mode: str = "auto", local: Optional[bool] = None) -> str:
+    mode = (auth_mode or "auto").strip().lower()
+    if mode in ("none", "bearer"):
+        return mode
+
+    provider_norm = (provider or "").strip().lower()
+    is_local = bool(local) if local is not None else _is_local_base_url(base_url)
+    if provider_norm in LOCAL_PROVIDER_HINTS or is_local:
+        return "none"
+    return "bearer"
+
+
+def _build_chat_url(base_url: str, chat_path: str) -> str:
+    path = (chat_path or "/chat/completions").strip()
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{(base_url or '').rstrip('/')}{path}"
+
+
 # ============================================================
 # LLM Backend
 # ============================================================
@@ -224,15 +265,17 @@ class LLMBackend:
             return await self._call_sync(llm_config, messages, max_tokens, temperature, api_key)
 
     async def _call_sync(self, llm: LLMConfig, messages: List[Dict], max_tokens: int,
-                         temperature: Optional[float], api_key: str) -> Dict:
+                         temperature: Optional[float], api_key: Optional[str]) -> Dict:
         """Synchronous API call"""
         normalized = normalize_messages(messages, llm.model_id)
         adjusted_max = adjust_max_tokens(normalized, llm.model_id, max_tokens)
+        auth_mode = _resolve_auth_mode(llm.provider, llm.base_url, llm.auth_mode, llm.local)
+        chat_url = _build_chat_url(llm.base_url, llm.chat_path)
 
 
         async with httpx.AsyncClient() as client:
             headers = {"Content-Type": "application/json"}
-            if api_key:
+            if auth_mode == "bearer" and api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
             body = {
@@ -244,7 +287,7 @@ class LLMBackend:
                 body["temperature"] = temperature
 
             resp = await client.post(
-                f"{llm.base_url}/chat/completions",
+                chat_url,
                 headers=headers,
                 json=body,
                 timeout=120.0
@@ -257,14 +300,16 @@ class LLMBackend:
             return clean_response(result)
 
     async def _call_streaming(self, llm: LLMConfig, messages: List[Dict], max_tokens: int,
-                              temperature: Optional[float], api_key: str) -> AsyncGenerator:
+                              temperature: Optional[float], api_key: Optional[str]) -> AsyncGenerator:
         """Streaming API call"""
         normalized = normalize_messages(messages, llm.model_id)
         adjusted_max = adjust_max_tokens(normalized, llm.model_id, max_tokens)
+        auth_mode = _resolve_auth_mode(llm.provider, llm.base_url, llm.auth_mode, llm.local)
+        chat_url = _build_chat_url(llm.base_url, llm.chat_path)
 
         async with httpx.AsyncClient() as client:
             headers = {"Content-Type": "application/json"}
-            if api_key:
+            if auth_mode == "bearer" and api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
             body = {
@@ -278,7 +323,7 @@ class LLMBackend:
 
             async with client.stream(
                 "POST",
-                f"{llm.base_url}/chat/completions",
+                chat_url,
                 headers=headers,
                 json=body,
                 timeout=120.0

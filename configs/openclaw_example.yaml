@@ -50,6 +50,10 @@ router:
   # provider: nvidia
   # model: meta/llama-3.1-8b-instruct
   # base_url: https://integrate.api.nvidia.com/v1
+  # provider_type: openai_compatible
+  # auth_mode: bearer        # auto | bearer | none
+  # chat_path: /chat/completions
+  # local: false             # optional: force local behavior
 
   # ========== LLMRouter Strategy (ML-based) ==========
   # strategy: llmrouter
@@ -66,6 +70,12 @@ api_keys:
     - nvapi-xxx...  # Replace with your NVIDIA API key(s)
   openai: ${OPENAI_API_KEY}  # Supports environment variables
   anthropic: ${ANTHROPIC_API_KEY}
+  # sglang: ""      # local providers can run without key when auth_mode=none/auto-local
+  # vllm: ""
+  # llama_cpp: ""
+  # lmstudio: ""
+  # huggingface_cli: ""
+  # huggingface: ${HF_TOKEN}  # if using Hugging Face cloud endpoints with bearer auth
 
 # ============================================================
 # Optional: Routing Memory (Retrieval-Augmented Routing)
@@ -130,6 +140,61 @@ llms:
     context_limit: 32768
     input_price: 0.2
     output_price: 0.2
+
+  # ================= Local OpenAI-Compatible Frameworks =================
+  # sglang_qwen:
+  #   provider: sglang
+  #   provider_type: openai_compatible
+  #   model: Qwen/Qwen2.5-7B-Instruct
+  #   base_url: http://127.0.0.1:30000/v1
+  #   auth_mode: none
+  #   chat_path: /chat/completions
+  #   description: "Local SGLang backend"
+
+  # vllm_llama:
+  #   provider: vllm
+  #   provider_type: openai_compatible
+  #   model: meta-llama/Llama-3.1-8B-Instruct
+  #   base_url: http://127.0.0.1:8001/v1
+  #   auth_mode: none
+  #   chat_path: /chat/completions
+  #   description: "Local vLLM backend"
+
+  # llamacpp_local:
+  #   provider: llama_cpp
+  #   provider_type: openai_compatible
+  #   model: local-model
+  #   base_url: http://127.0.0.1:8080/v1
+  #   auth_mode: none
+  #   chat_path: /chat/completions
+  #   description: "Local llama.cpp backend"
+
+  # lmstudio_local:
+  #   provider: lmstudio
+  #   provider_type: openai_compatible
+  #   model: local-model
+  #   base_url: http://127.0.0.1:1234/v1
+  #   auth_mode: none
+  #   chat_path: /chat/completions
+  #   description: "Local LM Studio backend"
+
+  # huggingface_cli_local:
+  #   provider: huggingface_cli
+  #   provider_type: openai_compatible
+  #   model: local-model
+  #   base_url: http://127.0.0.1:8082/v1
+  #   auth_mode: none
+  #   chat_path: /chat/completions
+  #   description: "Local Hugging Face CLI/endpoint backend"
+  #
+  # huggingface_cloud:
+  #   provider: huggingface
+  #   provider_type: openai_compatible
+  #   model: Qwen/Qwen2.5-7B-Instruct
+  #   base_url: https://router.huggingface.co/v1
+  #   auth_mode: bearer
+  #   chat_path: /chat/completions
+  #   description: "Hugging Face cloud endpoint"
 
 
 # ============================================================
